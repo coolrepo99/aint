@@ -1,0 +1,220 @@
+#
+# The MySQL database server configuration file.
+#
+# You can copy this to one of:
+# - "/etc/mysql/my.cnf" to set global options,
+# - "~/.my.cnf" to set user-specific options.
+# 
+# One can use all long options that the program supports.
+# Run program with --help to get a list of available options and with
+# --print-defaults to see which it would actually understand and use.
+#
+# For explanations see
+# http://dev.mysql.com/doc/mysql/en/server-system-variables.html
+
+# This will be passed to all mysql clients
+# It has been reported that passwords should be enclosed with ticks/quotes
+# escpecially if they contain "#" chars...
+# Remember to edit /etc/mysql/debian.cnf when changing the socket location.
+[client]
+port		= 3306
+socket		= /tmp/mysql.sock
+
+# Here is entries for some specific programs
+# The following values assume you have at least 32M ram
+
+# This was formally known as [safe_mysqld]. Both versions are currently parsed.
+[mysqld_safe]
+socket		= /tmp/mysql.sock
+nice		= 0
+
+[mysqld]
+#
+# * Basic Settings
+#
+
+#
+# * IMPORTANT
+#   If you make changes to these settings and your system uses apparmor, you may
+#   also need to also adjust /etc/apparmor.d/usr.sbin.mysqld.
+#
+
+user		= mysql
+pid-file	= /mysql/mysqld.pid
+socket		= /tmp/mysql.sock
+port		= 3306
+basedir		= /usr
+datadir		= /mysql/data
+tmpdir		= /tmp
+lc-messages-dir	= /usr/local/mysql/share
+skip-external-locking
+
+log-bin         = /mysql/binlog/mysql-bin.log
+innodb_flush_log_at_trx_commit=1
+sync_binlog=1
+
+# Set the server ID for replication
+# server-id = N
+
+# based on my-innodb-heavy-4G
+back_log = 50
+max_connections = 1000
+table_open_cache = 2048
+binlog_cache_size = 1M
+# max_heap_table_size = 1G
+# sort_buffer_size = 8M
+# join_buffer_size = 8M
+thread_concurrency = 16
+# query_cache_size = 1G
+# query_cache_limit = 32M
+default-storage-engine = INNODB
+thread_stack = 192K
+transaction_isolation = REPEATABLE-READ
+# tmp_table_size = 1G
+# binlog_format = mixed # xxx - BREAKS IF YOU UNCOMMENT!!!
+log_warnings
+innodb_additional_mem_pool_size = 16M
+innodb_buffer_pool_size = %(buffer_pool_size_gb)dG
+innodb_flush_method = O_DIRECT
+# didn't set these from my-innodb-heavy-4G (not exhaustive)
+
+# created by Spencer
+# tmp_table_size = 48M
+# table_cache = 96
+# innodb_lock_wait_timeout = 1000
+
+
+#
+# bind-address		= 127.0.0.1
+#
+# * Fine Tuning
+#
+key_buffer		= 16M
+max_allowed_packet	= 16M
+# thread_stack		= 128K
+thread_cache_size	= 8
+# This replaces the startup script and checks MyISAM tables if needed
+# the first time they are touched
+myisam-recover		= BACKUP
+#max_connections        = 100
+#table_cache            = 64
+#
+# * Query Cache Configuration
+#
+# query_cache_limit       = 1M
+# query_cache_size        = 24M
+#
+# * Logging and Replication
+#
+# Both location gets rotated by the cronjob.
+# Be aware that this log type is a performance killer.
+#log		= /mysql/log/mysql-query.log
+# it doesn't seem to work when we try and put it in /home/memrise/log/
+log_error       = /mysql/log/mysql-error.log
+#
+# Error logging goes to syslog. This is a Debian improvement :)
+#
+
+# Here you can see queries with especially long duration
+slow_query_log_file	= /mysql/log/mysql-slow.log
+slow_query_log = 1
+
+long_query_time = 1
+# log-queries-not-using-indexes
+#
+# The following can be used as easy to replay backup logs or for replication.
+# note: if you are setting up a replication slave, see README.Debian about
+#       other settings you may need to change.
+#server-id		= 1
+#log_bin			= /var/log/mysql/mysql-bin.log
+expire_logs_days	= 10
+max_binlog_size         = 100M
+#binlog_do_db		= include_database_name
+#binlog_ignore_db	= include_database_name
+#
+# * BerkeleyDB
+#
+# Using BerkeleyDB is now discouraged as its support will cease in 5.1.12.
+# skip-bdb
+#
+# * InnoDB
+#
+# InnoDB is enabled by default with a 10MB datafile in /var/lib/mysql/.
+# Read the manual for more InnoDB related options. There are many!
+# You might want to disable InnoDB to shrink the mysqld process by circa 100MB.
+#skip-innodb
+#
+# * Federated
+#
+# The FEDERATED storage engine is disabled since 5.0.67 by default in the .cnf files
+# shipped with MySQL distributions (my-huge.cnf, my-medium.cnf, and so forth).
+#
+# skip-federated
+#
+# * Security Features
+#
+# Read the manual, too, if you want chroot!
+# chroot = /var/lib/mysql/
+#
+# For generating SSL certificates I recommend the OpenSSL GUI "tinyca".
+#
+# ssl-ca=/etc/mysql/cacert.pem
+# ssl-cert=/etc/mysql/server-cert.pem
+# ssl-key=/etc/mysql/server-key.pem
+
+
+
+[mysqldump]
+quick
+quote-names
+max_allowed_packet	= 32M
+
+[mysql]
+#no-auto-rehash	# faster start of mysql but no tab completition
+safe-updates # http://dev.mysql.com/doc/refman/5.0/en/mysql-tips.html
+
+[isamchk]
+key_buffer		= 16M
+
+#
+# * NDB Cluster
+#
+# See /usr/share/doc/mysql-server-*/README.Debian for more information.
+#
+# The following configuration is read by the NDB Data Nodes (ndbd processes)
+# not from the NDB Management Nodes (ndb_mgmd processes).
+#
+# [MYSQL_CLUSTER]
+# ndb-connectstring=127.0.0.1
+
+
+#
+# * IMPORTANT: Additional settings that can override those from this file!
+#   The files must end with '.cnf', otherwise they'll be ignored.
+#
+#!includedir /etc/mysql/conf.d/
+
+# Performance-related settings
+
+# Disable the in-memory adaptive hash index because of lock contention
+# issues.
+# (http://dev.mysql.com/doc/innodb/1.1/en/innodb-performance-adaptive_hash_index.html)
+
+innodb-adaptive-hash-index = 0
+
+# Flush the transaction log immediately on commit.
+# (http://dev.mysql.com/doc/refman/5.5/en/innodb-parameters.html#sysvar_innodb_flush_log_at_trx_commit)
+innodb_flush_log_at_trx_commit = 1
+
+# Use the OS thread scheduler for INNODB threads. Reduces mutex contention.
+# (http://dev.mysql.com/doc/refman/5.5/en/innodb-parameters.html#sysvar_innodb_thread_concurrency)
+innodb_thread_concurrency = 0
+
+# Schedule I/O more aggressively.
+# http://dev.mysql.com/doc/refman/5.5/en/innodb-performance-thread_io_rate.html
+innodb_io_capacity = 500
+
+# Let the OS sync the binlog to disk. This reduces I/O contention on the binary log.
+# (http://dev.mysql.com/doc/refman/5.5/en/replication-options-binary-log.html#sysvar_sync_binlog)
+sync_binlog = 0
+

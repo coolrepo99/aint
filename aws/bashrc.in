@@ -1,0 +1,7 @@
+# Template file for creating the .bashrc for the application
+# user. Since we're Memrise, ours is called memrise.
+
+export MEMRISE_DB=mysql
+export MEMRISE_PRODUCTION=0
+export PYTHONPATH=$HOME/memrise
+cd ~/memrise/memrise

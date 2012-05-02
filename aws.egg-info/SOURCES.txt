@@ -1,0 +1,16 @@
+setup.py
+aws/__init__.py
+aws/instances.py
+aws/runcmd.py
+aws/settings.py
+aws/setup_dns.py
+aws/setup_ec2.py
+aws/setup_web.py
+aws/setup_web_ami.py
+aws/start_instance.py
+aws.egg-info/PKG-INFO
+aws.egg-info/SOURCES.txt
+aws.egg-info/dependency_links.txt
+aws.egg-info/entry_points.txt
+aws.egg-info/requires.txt
+aws.egg-info/top_level.txt
