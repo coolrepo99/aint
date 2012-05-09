@@ -1,5 +1,0 @@
-[console_scripts]
-sync_web_dns = aws.setup_web_ami:sync_web_dns
-start_instance = aws.start_instance:main
-setup_web_ami = aws.setup_web_ami:main
-

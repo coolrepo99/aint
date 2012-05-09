@@ -1,0 +1,5 @@
+[console_scripts]
+sync_web_dns = aint.setup_web_ami:sync_web_dns
+start_instance = aint.start_instance:main
+setup_web_ami = aint.setup_web_ami:main
+

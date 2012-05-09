@@ -74,7 +74,3 @@ def all_stopped(ec2, instances):
 
     return all_status(ec2, instances, "stopped")
 
-
-ELB_ID = ""
-def add_to_elb(elb, instance):
-    pass
