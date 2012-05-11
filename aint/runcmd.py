@@ -91,3 +91,15 @@ def run(cmd, *args, **kwargs):
         log.error("Command %s failed with exception:", cmd)
         log.error(tb.format_exc())
         raise
+
+def wait(func):
+    """Calls `cond` in an exponential-backoff loop until it returns `True`."""
+
+    for i in itt.count(0):
+        if func():
+            break
+
+        if i > 5:
+            i = 5
+
+        time.sleep(0.25 * (2**i))

@@ -1,5 +1,8 @@
-import aws.instances as aint
-import aws.setup_dns as sdns
+"""Basic support for Fabric or other command-line tools."""
+
+import instances as aint
+import adns as sdns
+
 import boto
 
 def start_spare_web_servers(count=4):
@@ -24,7 +27,7 @@ def start_spare_web_servers(count=4):
         srvr.start()
 
     print("Waiting for servers to start.")
-    aint.wait(lambda: aint.all_running(ec2(), srvrs))
+    rc.wait(lambda: aint.all_running(ec2(), srvrs))
 
     print("Updating DNS.")
     r53 = sdns.connect()
@@ -82,7 +85,7 @@ def stop_spare_web_servers(count=4):
     for srvr in stop_srvrs:
         srvr.stop()
 
-    aint.wait(lambda: aint.all_stopped(ec2(), stop_srvrs))
+    rc.wait(lambda: aint.all_stopped(ec2(), stop_srvrs))
 
     # Dump the instances cache so that load_balance_web_servers gets fresh information.
     _instances = None

@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+"""Creates an instance of the requested type, then configures it once it's runnning."""
+
 import os
 import sys
 import boto
@@ -13,14 +15,33 @@ import aws.setup_dns as sdns
 import aws.runcmd as rc
 
 import settings as awssett
-from settings import instance_ami_map
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("start_instance")
 
-memrise_pem = rc.rsrc_path("memrise.pem")
+log = logging.getLogger("initialize_instance")
 
-def start_instance(ec2, instance_type=awssett.INSTANCE_TYPES['DEFAULT']):
+# maps the instance size to the machine image we want to use
+# (32 vs 64 bit) (since the smaller instance sizes have to be 32-bit)
+ami_32bit = "ami-ab36fbc2" # 32-bit, $0.17/hour, 4 cores, 1.7.GB
+ami_64bit = "ami-ad36fbc4" # 64-bit, $0.34/hour, 2 cores, 7.5GB
+instance_ami_map = {
+    "m1.xlarge": ami_64bit,
+    "m2.4xlarge": ami_64bit,
+    "m1.large": ami_64bit,
+    "c1.medium": ami_32bit,
+    "m1.small": ami_32bit,
+    }
+
+instance_types = {
+    "default": "m1.large",
+    "web": 'c1.medium',
+    "database": "m2.4xlarge",
+    "staging": 'm1.large',
+    "rabbitmq": "m1.small",
+    "jenkins": "m1.small",
+    }
+
+def start_instance(ec2, instance_type=instance_types["default"]):
     ami = instance_ami_map[instance_type]
 
     log.info("Requesting AMI %s for instance type %s", ami, instance_type)
@@ -35,24 +56,10 @@ def start_instance(ec2, instance_type=awssett.INSTANCE_TYPES['DEFAULT']):
 
     log.info("Waiting for instance %s to start", instance.id)
 
-    # see whether the instance we just started is ready yet
-    #
-    # ITT.COUNT(0) -> 0,1,2,3,4,... indefinitely
-    for i in itt.count(0):
-        if instance.state == "running":
-            break
-
-        if i > 5:
-            i = 5
-        time.sleep(0.25 * (2 ** i))
-
-        # find the instance we just started
-        ress = [r for r in ec2.get_all_instances() if r.id == res_id]
-        if not len(ress):
-            continue
-
-        res = ress[0]
-        instance = res.instances[0]
+    def is_running():
+        instance.update()
+        return instance.state == "running"
+    rc.wait(is_running)
 
     log.info("Instance %s started", instance.id)
     log.info("Connect using host name %s", instance.public_dns_name)
@@ -76,13 +83,7 @@ def wait_for_ssh(instance):
 
     log.info("Waiting for ssh to start on %s", instance.public_dns_name)
 
-    for i in itt.count():
-        if not subp.call(["ssh", "-i", memrise_pem, user_host, "true"]):
-            break
-
-        if i > 5:
-            i = 5
-        time.sleep(0.25 * (2 ** i))
+    rc.wait(lambda: subp.call(["ssh", "-i", memrise_pem, user_host, "true"]))
 
 def set_dns_cname(instance, host_name):
     dns_name = ".".join((host_name, "memrise.com."))
@@ -109,9 +110,6 @@ def configure_instance(instance, host_name, instance_type="default"):
 
     set_dns_cname(instance, host_name)
 
-    display_keys(user_host)
-
-
 def display_keys(user_host):
     log.warn("displaying the new ssh keys for unfuddle/github.")
     subp.check_call(["ssh", "-i", memrise_pem, "-p", "2000", user_host, "cd setup_ec2/aws && python setup_web.py keys"])
@@ -131,7 +129,7 @@ def attach_volumes(ec2, instance, volumes):
         ec2.attach_volume(vol, instance.id, device)
 
 def start_web_instance(ec2, host_name):
-    instance = start_instance(ec2, instance_type=awssett.INSTANCE_TYPES['WEB'])
+    instance = start_instance(ec2, instance_type=instance_types["web"])
     configure_instance(instance, host_name, "web")
 
     log.info("Starting web instance configuration")
@@ -148,7 +146,7 @@ def start_celery_instance(ec2, host_name):
 
 
 def start_jenkins_instance(ec2, host_name):
-    instance = start_instance(ec2, instance_type=awssett.INSTANCE_TYPES['JENKINS'])
+    instance = start_instance(ec2, instance_type=instance_types["jenkins"])
     configure_instance(instance, host_name, "jenkins")
 
     log.info("Starting jenkins instance configuration")
@@ -156,23 +154,23 @@ def start_jenkins_instance(ec2, host_name):
                      "cd setup_ec2/aws && python setup_web.py jenkins"])
 
 def start_rabbitmq_instance(ec2, host_name):
-    instance = start_instance(ec2, instance_type=awssett.INSTANCE_TYPES['RABBITMQ'])
+    instance = start_instance(ec2, instance_type=instance_types["rabbitmq"])
     configure_instance(instance, host_name, "rabbitmq")
 
 def start_database_instance(ec2, host_name):
-    instance = start_instance(ec2, awssett.INSTANCE_TYPES['DATABASE'])
+    instance = start_instance(ec2, instance_types["database"])
     volumes = create_database_storage(ec2)
     attach_volumes(ec2, instance, volumes)
     configure_instance(instance, host_name, "mysql")
 
 def start_staging_instance(ec2, host_name):
-    instance = start_instance(ec2, awssett.INSTANCE_TYPES['STAGING'])
+    instance = start_instance(ec2, instance_types["staging"])
     configure_instance(instance, host_name, "staging")
     subp.check_call(["ssh", "-i", memrise_pem, "-p", "2000", "ubuntu@" + instance.public_dns_name,
                      "cd setup_ec2/aws && python setup_web.py web"])
 
 def start_backupdb_instance(ec2, host_name):
-    instance = start_instance(ec2, instance_type=awssett.INSTANCE_TYPES["DATABASE"])
+    instance = start_instance(ec2, instance_type=instance_types["database"])
     configure_instance(instance, host_name, "backupdb")
 
 server_type_map = {"web": start_web_instance,

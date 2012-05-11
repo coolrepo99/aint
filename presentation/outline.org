@@ -1,7 +1,17 @@
 * Framework Configuration
 ** Boto Configuration
+
+Install the .boto file.
+
 ** Amazon Key
+
+Put the Amazon SSH private key file in amazon.pem.
+
 ** Basic Instance Configuration
+
+start_instance.py
+
+
 ** Starting an Instance
 * Running Commands
 ** sudo
