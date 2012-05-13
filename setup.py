@@ -4,7 +4,7 @@ setup(
     name = "aint",
     version = "0.1",
     packages = find_packages(),
-    install_requires = ["dnspython", "boto"],
+    install_requires = ["boto >= 2.3.0"],
     entry_points = {
         'console_scripts': [
             'start_instance = aint.start_instance:main',

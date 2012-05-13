@@ -11,7 +11,7 @@ import os.path as opath
 import socket
 import logging
 import itertools as itt
-import aws.setup_dns as sdns
+import adns as adns
 import aws.runcmd as rc
 
 import settings as awssett
@@ -20,10 +20,10 @@ logging.basicConfig(level=logging.INFO)
 
 log = logging.getLogger("initialize_instance")
 
-# maps the instance size to the machine image we want to use
-# (32 vs 64 bit) (since the smaller instance sizes have to be 32-bit)
-ami_32bit = "ami-ab36fbc2" # 32-bit, $0.17/hour, 4 cores, 1.7.GB
-ami_64bit = "ami-ad36fbc4" # 64-bit, $0.34/hour, 2 cores, 7.5GB
+# maps the instance size to the machine image we want to use (32 vs 64
+# bit) (since the smaller instance sizes have to be 32-bit)
+ami_32bit = "ami-ab36fbc2"
+ami_64bit = "ami-ad36fbc4"
 instance_ami_map = {
     "m1.xlarge": ami_64bit,
     "m2.4xlarge": ami_64bit,
@@ -32,6 +32,7 @@ instance_ami_map = {
     "m1.small": ami_32bit,
     }
 
+# EC2 instance types for the different server types.
 instance_types = {
     "default": "m1.large",
     "web": 'c1.medium',
@@ -40,6 +41,8 @@ instance_types = {
     "rabbitmq": "m1.small",
     "jenkins": "m1.small",
     }
+
+aws_pem = opath.expanduser(awssett.ssh_key_path)
 
 def start_instance(ec2, instance_type=instance_types["default"]):
     ami = instance_ami_map[instance_type]
@@ -59,6 +62,7 @@ def start_instance(ec2, instance_type=instance_types["default"]):
     def is_running():
         instance.update()
         return instance.state == "running"
+
     rc.wait(is_running)
 
     log.info("Instance %s started", instance.id)
@@ -66,8 +70,8 @@ def start_instance(ec2, instance_type=instance_types["default"]):
 
     return instance
 
-def wait_for_ssh(instance):
-    user_host = "ubuntu@%s" % instance.public_dns_name
+def remove_stale_host_keys(instance):
+    """Remove the stale SSH host keys from known_hosts to avoid key errors."""
 
     log.info("Removing stale ssh host keys")
     subp.call(["ssh-keygen", "-f", opath.expanduser("~/.ssh/known_hosts"), "-R", instance.public_dns_name], 
@@ -81,41 +85,45 @@ def wait_for_ssh(instance):
         subp.call(["ssh-keygen", "-f", opath.expanduser("~/.ssh/known_hosts"), "-R", addr])
         addrs.add(addr)
 
+def wait_for_ssh(instance):
+    """Wait for SSH to start on the new instance."""
+
+    user_host = "ubuntu@%s" % instance.public_dns_name
+
     log.info("Waiting for ssh to start on %s", instance.public_dns_name)
 
-    rc.wait(lambda: subp.call(["ssh", "-i", memrise_pem, user_host, "true"]))
+    rc.wait(lambda: subp.call(["ssh", "-i", aws_pem, user_host, "true"]))
 
 def set_dns_cname(instance, host_name):
-    dns_name = ".".join((host_name, "memrise.com."))
-    log.info("Setting address %s as an alias for %s", dns_name, instance.public_dns_name)
+    """Sets the DNS cname of the instance to host_name."""
 
-    r53 = sdns.connect()
-    rrs = sdns.current_rrs(r53)
-    sdns.replace_rr(rrs, dns_name, "CNAME", [instance.public_dns_name])
+    r53 = adns.connect()
+    rrs = adns.current_rrs(r53)
+    rrs.sync_instance(rrs, instance)
     rrs.commit()
 
 def configure_instance(instance, host_name, instance_type="default"):
+    """Add the EC2 metadata tags and run the remote configuration on the new instance."""
+
     user_host = "ubuntu@%s" % instance.public_dns_name
 
     instance.add_tag("instance_type", instance_type)
     instance.add_tag("Name", host_name)
+    remove_stale_host_keys(instance)
     wait_for_ssh(instance)
 
     log.info("Copying configuration scripts to %s", user_host)
-    subp.check_call(["rsync", "-a", "--exclude", ".git/", "-e", "ssh -i" + memrise_pem, ".", "%s:setup_ec2" % user_host])
+    subp.check_call(["rsync", "-a", "--exclude", ".git/", "-e", "ssh -i" + aws_pem, ".", "%s:setup_ec2" % user_host])
 
     log.info("Configuring %s as %s", user_host, instance_type)
-    subp.check_call(["ssh", "-i", memrise_pem, user_host, "-t", 
+    subp.check_call(["ssh", "-i", aws_pem, user_host, "-t", 
                      "cd setup_ec2/aws && python setup_ec2.py %s %s" % (instance_type, host_name)])
 
     set_dns_cname(instance, host_name)
 
-def display_keys(user_host):
-    log.warn("displaying the new ssh keys for unfuddle/github.")
-    subp.check_call(["ssh", "-i", memrise_pem, "-p", "2000", user_host, "cd setup_ec2/aws && python setup_web.py keys"])
-    raw_input("configure these and hit [enter] to proceed.")
-
 def create_database_storage(ec2):
+    """Creates four EBS devices and returns a list of their names."""
+
     vols = []
     for i in xrange(4):
         vol = ec2.create_volume(50, "us-east-1d")
@@ -124,6 +132,11 @@ def create_database_storage(ec2):
     return vols
 
 def attach_volumes(ec2, instance, volumes):
+    """Attach a set of EBS volumes to an instance. volumes should be a
+    sequence of boto.ec2.volume.id strings as returned by
+    create_database_storage. They're attached in the same order
+    they're passed, starting from /dev/sdh."""
+
     for i, vol in enumerate(volumes):
         device = "/dev/sd%s" % chr((ord("h") + i))
         ec2.attach_volume(vol, instance.id, device)
@@ -133,7 +146,7 @@ def start_web_instance(ec2, host_name):
     configure_instance(instance, host_name, "web")
 
     log.info("Starting web instance configuration")
-    subp.check_call(["ssh", "-i", memrise_pem, "-p", "2000", "ubuntu@" + instance.public_dns_name,
+    subp.check_call(["ssh", "-i", aws_pem, "-p", "2000", "ubuntu@" + instance.public_dns_name,
                      "cd setup_ec2/aws && python setup_web.py web"])
 
 def start_celery_instance(ec2, host_name):
@@ -141,7 +154,7 @@ def start_celery_instance(ec2, host_name):
     configure_instance(instance, host_name, "celery")
 
     log.info("Starting celery instance configuration")
-    subp.check_call(["ssh", "-i", memrise_pem, "-p", "2000", "ubuntu@" + instance.public_dns_name,
+    subp.check_call(["ssh", "-i", aws_pem, "-p", "2000", "ubuntu@" + instance.public_dns_name,
                      "cd setup_ec2/aws && python setup_web.py celery"])
 
 
@@ -150,7 +163,7 @@ def start_jenkins_instance(ec2, host_name):
     configure_instance(instance, host_name, "jenkins")
 
     log.info("Starting jenkins instance configuration")
-    subp.check_call(["ssh", "-i", memrise_pem, "-p", "2000", "ubuntu@" + instance.public_dns_name,
+    subp.check_call(["ssh", "-i", aws_pem, "-p", "2000", "ubuntu@" + instance.public_dns_name,
                      "cd setup_ec2/aws && python setup_web.py jenkins"])
 
 def start_rabbitmq_instance(ec2, host_name):
@@ -166,7 +179,7 @@ def start_database_instance(ec2, host_name):
 def start_staging_instance(ec2, host_name):
     instance = start_instance(ec2, instance_types["staging"])
     configure_instance(instance, host_name, "staging")
-    subp.check_call(["ssh", "-i", memrise_pem, "-p", "2000", "ubuntu@" + instance.public_dns_name,
+    subp.check_call(["ssh", "-i", aws_pem, "-p", "2000", "ubuntu@" + instance.public_dns_name,
                      "cd setup_ec2/aws && python setup_web.py web"])
 
 def start_backupdb_instance(ec2, host_name):
@@ -187,7 +200,6 @@ def main():
     """
     server_type = server_type_map[sys.argv[1]]
     host_name = sys.argv[2]
-    os.chmod(memrise_pem, 0600)
 
     ec2 = boto.connect_ec2()
     server_type(ec2, host_name)

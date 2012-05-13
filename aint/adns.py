@@ -1,8 +1,10 @@
 import boto
-import dns.query as dq
-import dns.message as dmesg
 import itertools as itt
 import instances as inst
+
+import settings
+
+dns_suffix = settings.dns_suffix + "." if settings.dns_suffix != "." else ""
 
 def current_rrs(r53, zone_id=MEMRISE_ZONE_ID):
     return r53.get_all_rrsets(zone_id)
@@ -29,7 +31,10 @@ def connect():
     return boto.connect_route53()
 
 def sync_instance(rrs, instance):
-    memrise_name = ".".join((inst.name(instance), "memrise.com."))
+    """Syncs the DNS CNAME of the instance to the instance. commit()
+    must be called on rrs afterwards."""
+
+    memrise_name = ".".join((inst.name(instance), dns_suffix))
     aws_name = inst.aws_hostname(instance) + "."
 
     replace_rr(rrs, memrise_name, "CNAME", [aws_name])
