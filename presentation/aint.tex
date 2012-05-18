@@ -1,12 +1,10 @@
 \documentclass{beamer}
-\usetheme{default}
+\usetheme{Warsaw}
 
 \title{Amazonian Fabric}
 \subtitle{Basic EC2 Instance Management in Python}
-\author{Evan Cofsky \\
-Memrise, Inc. \\
-http://www.memrise.com/ \\
-evan@tunixman.com}
+\author{@tunixman
+http://www.memrise.com/dev/}
 
 \begin{document}
 
@@ -22,6 +20,212 @@ Why another management framework?
 
 \end{itemize}
 
+\end{frame}
+
+\begin{frame}{Starting Instances}
+
+Let's start a backup database server:
+
+\begin{example}
+\texttt{\$ start\_instance web web99}
+\end{example}
+
+This will:
+
+\begin{itemize}
+\item Create a new instance of the ``database'' type.
+\item Give it the host name \texttt{db10.memrise.com}.
+\item Install MySQL 5.5 from source.
+\item Install our \texttt{my.cnf}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Instance Types}
+
+  EC2 Instance Types and AMIs are configured using the
+  \texttt{instance\_ami\_map} and the \texttt{instance\_types}
+  dictionaries in \texttt{start\_instance}. We're using Alestic Ubuntu
+  images for our systems, and there are deep assumptions in the
+  scripts about that.
+
+\end{frame}
+
+\begin{frame}{\texttt{instance\_type\_map}}
+    The mapping between EC2 instance types and our server types
+    determines which EC2 instance type is used when
+    \texttt{start\_instance} is run.
+
+    \begin{example}
+      \begin{center}
+        \begin{tabular}[h]{|l|l|}
+          \hline
+          Host Type & Instance Type \\
+          \hline
+          default & m1.large \\
+          web & c1.medium \\
+          database & m2.4xlarge \\
+          rabbitmq & m1.small \\
+          jenkins & m1.small \\
+          \hline
+        \end{tabular}
+      \end{center}
+    \end{example}
+
+\end{frame}
+
+\begin{frame}{\texttt{instance\_ami\_map}}
+  The mapping between EC2 instance types and the AMI to build the
+  instance with determines which AMI to use for each EC2 instance
+  type when \texttt{start\_instance} is run.
+
+    \begin{example}
+      \begin{center}
+        \begin{tabular}[h]{|l|l|}
+          \hline
+          Instance Type & Image \\
+          \hline
+          m1.xlarge & ami\_64bit \\
+          m2.4xlarge & ami\_64bit \\
+          m1.large & ami\_64bit \\
+          c1.medium & ami\_32bit \\
+          m1.small & ami\_32bit \\
+          \hline
+        \end{tabular}
+      \end{center}
+    \end{example}
+\end{frame}
+
+\begin{frame}{Control Server}
+
+  \begin{itemize}
+  \item ``Master'' server for running other servers and tracking
+    state.
+  \item Another system to maintain.
+  \item Very good at getting out of sync with running systems.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{EC2 Metadata Tags}
+
+  \begin{itemize}
+    \item Managed by EC2, accessible by \texttt{boto}
+    \item Set by \texttt{setup\_instance}
+    \item \texttt{instance\_type} to identify what kind of server it
+      is
+    \item \texttt{Name} to record host name and which is displayed
+      in EC2 console.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Host Names}
+  
+  \begin{itemize}
+  \item set to \texttt{Name} metadata key with the domain suffix
+  \item set in \texttt{/etc/hostname}, \texttt{/etc/hosts}, and in
+    \texttt{postfix} configuration
+  \item CNAME set to AWS host name in Route 53 for DNS to function
+  \end{itemize}
+
+\end{frame}
+
+\begin{frame}{Deployment in Parallel}
+
+The \texttt{fabric}\ command for deployments now can:
+
+\begin{itemize}
+\item Find the host types that should be deployed to
+\item Run common global deployment code once
+\item Run common deployment code across all servers in parallel
+\item Update the load balancer
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Deployable Servers}
+There are three types of servers we deploy our stack to:
+
+\begin{itemize}
+\item Celery
+\item Web
+\item Solr
+\end{itemize}
+
+These are managed with three different \texttt{fabric}\ roles, and
+the \texttt{fabric}\ functions for these server types are marked with
+their roles.
+
+\end{frame}
+
+\begin{frame}{Parallel Deployment}
+
+\begin{itemize}
+\item We use a special wrapper around the \texttt{parallel}\ decorator since
+some operating systems don't handle it well. 
+\item We deploy to all web servers in parallel where possible.
+\item Turns a ten-minute deploy into a 2 minute deploy.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Building Role Lists}
+
+\begin{itemize}
+\item Create lists of each server type using \texttt{instance\_type}\
+  metadata and instance state.
+\item Add ssh username and port
+\item Cache results to speed repeated calls.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Scaling Web Servers}
+
+\begin{itemize}
+\item Can't use EC2 Elastic Cloud Service because of metrics.
+\item Will often know in advance when load spikes will occur.
+\item Want to make adding and removing capacity very easy.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Adding and Reducing Capacity}
+
+Adding capacity:
+
+\begin{itemize}
+\item Creating new servers with \texttt{setup\_web\_ami}
+\item Deploying existing stopped servers with
+  \texttt{start\_spare\_web\_servers}
+\end{itemize}
+
+Reducing capacity:
+
+\begin{itemize}
+\item \texttt{stop\_spare\_web\_servers}
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Fabric Instance Cache}
+
+But what about the instance cache?
+
+\begin{itemize}
+\item It will have stale information after starting or stopping servers.
+\item Flushing the cache we punt on and just tell the user to run a
+  deploy.
+\item This is perfectly fine because of load balancing.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Load Balancing}
+
+\begin{itemize}
+\item Site stack deployed to all active web servers.
+\item New active servers added to load balancer, DNS updated
+\item Inactive servers removed from load balancer.
+\item When servers inactivated, also removed.
+\end{itemize}
 \end{frame}
 
 \end{document}

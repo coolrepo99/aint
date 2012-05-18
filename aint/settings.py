@@ -7,3 +7,12 @@ dns_suffix = "atunit.org"
 # for $HOME
 ssh_key_path = "~/.ssh/atunit.pem"
 
+# /etc repository information
+etc_repo_uri = "git@memrise.unfuddle.com:memrise/etc.git"
+etc_repo_email = "info@memrise.com"
+etc_repo_user = "Atunit root"
+
+# Name of apache configuration to use after checking out the /etc
+# configuration.
+site_config_name = "memrise"
+

@@ -16,6 +16,12 @@ logging.basicConfig(level=logging.INFO)
 
 log = logging.getLogger("setup_web")
 
+try:
+    import settings as settings
+except:
+    log.error("settings.py must be in the current working directory or on PYTHONPATH.")
+    raise
+
 os.environ["PATH"] = opath.pathsep.join((["/usr/local/mysql/bin"] + list(os.environ["PATH"].split(opath.pathsep))))
 
 def checkout_etc():
@@ -28,12 +34,12 @@ def checkout_etc():
 
     log.info("Initializing repository in /etc")
     rc.check_sudo(["git", "init"], cwd="/etc")
-    rc.check_sudo(["git", "config", "--global", "user.name", "Memrise root"], cwd="/etc")
-    rc.check_sudo(["git", "config", "--global", "user.email", "info@memrise.com"], cwd="/etc")
-    rc.check_sudo(["git", "remote", "add", "origin", "git@memrise.unfuddle.com:memrise/etc.git"],
+    rc.check_sudo(["git", "config", "--global", "user.name", settings.etc_repo_user], cwd="/etc")
+    rc.check_sudo(["git", "config", "--global", "user.email", settings.etc_repo_email], cwd="/etc")
+    rc.check_sudo(["git", "remote", "add", "origin", settings.etc_repo_uri],
                   cwd="/etc")
 
-    log.info("Fetching /etc repository from unfuddle")
+    log.info("Fetching /etc repository from %s", settings.etc_repo_uri)
     rc.check_sudo(["git", "fetch"], cwd="/etc")
     rc.check_sudo(["git", "branch", "master", "origin/master"], cwd="/etc")
     rc.check_sudo(["git", "checkout", "-f", "master"], cwd="/etc")
@@ -46,19 +52,21 @@ def checkout_etc():
     log.info("/etc updated from repository")
 
 def enable_site():
-    log.info("Enabling memrise web site.")
+    log.info("Enabling web site %s", settings.site_config_name)
 
     rc.check_sudo(["a2dissite", "000-default"])
-    rc.check_sudo(["a2ensite", "memrise"])
+    rc.check_sudo(["a2ensite", settings.site_config_name])
     rc.restart_service("apache2")
 
     if opath.exists("/etc/nginx/sites-enabled/default"):
         rc.check_sudo(["rm", "nginx/sites-enabled/default"], cwd="/etc")
 
-    rc.check_sudo(["ln", "-sf", "/etc/nginx/sites-available/memrise", "/etc/nginx/sites-enabled/memrise"])
+    rc.check_sudo(["ln", "-sf",
+                   "/etc/nginx/sites-available/%s" % settings.site_config_name,
+                   "/etc/nginx/sites-enabled/%s" % settings.site_config_name])
     rc.restart_service("nginx")
 
-    log.info("Website enabled.")
+    log.info("Enabled web site %s", settings.site_config_name)
 
 def checkout_site():
     setup_known_hosts()
