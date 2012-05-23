@@ -1,10 +1,10 @@
 setup.py
 aint/__init__.py
+aint/adns.py
 aint/commands.py
 aint/instances.py
 aint/runcmd.py
 aint/settings.py
-aint/setup_dns.py
 aint/setup_ec2.py
 aint/setup_web.py
 aint/setup_web_ami.py

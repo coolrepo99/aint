@@ -1,2 +1,1 @@
-dnspython
-boto
+boto >= 2.3.0

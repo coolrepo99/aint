@@ -1,12 +1,16 @@
 import boto
 import itertools as itt
 import instances as inst
+import ConfigParser as cprs
 
-import settings
+config = cprs.SafeConfigParser()
+config.read("aint.ini")
 
-dns_suffix = settings.dns_suffix + "." if settings.dns_suffix != "." else ""
+dns_suffix = config.get("adns", "dns_suffix")
+dns_suffix = dns_suffix + "." if dns_suffix[-1] != "." else ""
+zone_id = config.get("adns", "zone_id")
 
-def current_rrs(r53, zone_id=MEMRISE_ZONE_ID):
+def current_rrs(r53, zone_id=zone_id):
     return r53.get_all_rrsets(zone_id)
 
 def get_rrs(rrs, rrname, rrtype=None):
@@ -34,7 +38,4 @@ def sync_instance(rrs, instance):
     """Syncs the DNS CNAME of the instance to the instance. commit()
     must be called on rrs afterwards."""
 
-    memrise_name = ".".join((inst.name(instance), dns_suffix))
-    aws_name = inst.aws_hostname(instance) + "."
-
-    replace_rr(rrs, memrise_name, "CNAME", [aws_name])
+    replace_rr(rrs, inst.hostname(instance), "CNAME", [inst.aws_hostname(inst)])

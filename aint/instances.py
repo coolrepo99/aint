@@ -28,8 +28,13 @@ def deployable_instances(ec2):
     for inst in (i for i in walk_instances(ec2) if should_deploy(i)):
         yield inst
 
+def hostname(instance):
+    import adns
+
+    return ".".join((name(instance), adns.dns_suffix))    
+
 aws_hostname = lambda i: str(i.public_dns_name)
-memrise_hostname = lambda i: ".".join((name(i), "memrise.com"))
+
 connect = lambda: boto.connect_ec2()
 
 def reservation_instances(ec2, res):
